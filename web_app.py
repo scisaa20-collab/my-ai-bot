@@ -6,64 +6,70 @@ import os
 # --- 1. 網頁基本設定 ---
 st.set_page_config(page_title="醫療輔具 AI 助理", page_icon="🤖")
 st.title("🤖 醫療輔具申請諮詢助手")
-st.caption("本系統根據《醫療輔具申請作業程序》提供諮詢")
 
-# --- 2. API 設定與模型挑選 ---
-# 從 Streamlit Secrets 讀取你的金鑰
+# 讀取金鑰
 API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=API_KEY)
+PDF_PATH = "醫療輔具申請-作業程序.pdf" 
 
-# 直接鎖定你清單中額度最高的模型 (每天 500 次)
-# 這樣就不會再出現 429 額度爆掉的問題了
-MODEL_NAME = 'gemini-3.1-flash-lite'
-model = genai.GenerativeModel(MODEL_NAME)
+# --- 2. 核心修正：模型診斷與手動選擇器 ---
+with st.sidebar:
+    st.header("⚙️ 系統設定")
+    try:
+        # 抓取這把 Key 真正能用的所有模型 ID
+        available_models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 讓使用者自己選，預設幫你找 3.1 或 1.5
+        default_idx = 0
+        for i, name in enumerate(available_models):
+            if "3.1-flash-lite" in name or "1.5-flash" in name:
+                default_idx = i
+                break
+        
+        selected_model = st.selectbox("請選擇 AI 模型 (若報錯請切換)", available_models, index=default_idx)
+        st.info(f"當前模型：{selected_model}")
+        model = genai.GenerativeModel(selected_model)
+    except Exception as e:
+        st.error(f"無法讀取模型清單：{e}")
+        st.stop()
 
 # --- 3. 讀取 PDF 內容 ---
 @st.cache_resource
 def load_pdf_content():
-    path = "醫療輔具申請-作業程序.pdf"
-    all_text = ""
-    if os.path.exists(path):
+    if os.path.exists(PDF_PATH):
         try:
-            with pdfplumber.open(path) as pdf:
+            with pdfplumber.open(PDF_PATH) as pdf:
+                text = ""
                 for page in pdf.pages:
-                    text = page.extract_text()
-                    if text: all_text += text + "\n"
-            return all_text
-        except:
-            return None
+                    text += (page.extract_text() or "") + "\n"
+            return text
+        except: return None
     return None
 
 knowledge_context = load_pdf_content()
 
-# --- 4. 對話介面與紀錄 ---
+# --- 4. 對話介面 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 顯示歷史訊息
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 處理新提問
 if prompt := st.chat_input("請問想了解哪種輔具的申請規則？"):
-    # 紀錄使用者問題
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 生成 AI 回覆
     with st.chat_message("assistant"):
         if not knowledge_context:
-            response_text = "❌ 系統錯誤：找不到 PDF 規範檔案，請確認檔案已上傳至 GitHub。"
+            st.error("❌ 找不到 PDF 規範檔案。")
         else:
-            # 建立完整的提示詞
-            full_prompt = f"請根據以下規範回答問題，若規範未提到請告知：\n\n{knowledge_context}\n\n問題：{prompt}"
+            full_prompt = f"請根據以下規範回答問題：\n{knowledge_context}\n\n問題：{prompt}"
             try:
                 ai_response = model.generate_content(full_prompt)
-                response_text = ai_response.text
+                st.markdown(ai_response.text)
+                st.session_state.messages.append({"role": "assistant", "content": ai_response.text})
             except Exception as e:
-                response_text = f"❌ AI 連線出錯：請檢查 API 金鑰或稍後再試。({e})"
-        
-        st.markdown(response_text)
-        st.session_state.messages.append({"role": "assistant", "content": response_text})
+                st.error(f"❌ 此模型連線出錯：{e}")
+                st.warning("💡 提示：可能是額度用盡或模型名稱不對，請從左側選單換一個模型試試！")
