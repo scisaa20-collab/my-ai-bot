@@ -1,5 +1,5 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 import pdfplumber
 import os
 
@@ -7,12 +7,16 @@ import os
 st.set_page_config(page_title="醫療輔具 AI 助理", page_icon="🤖")
 st.title("🤖 醫療輔具申請諮詢助手")
 
-# --- 2. 使用全新的 Google SDK 連線方式 ---
+# 從 Secrets 讀取 Key (雲端版必備)
 API_KEY = st.secrets["GEMINI_API_KEY"]
-client = genai.Client(api_key=API_KEY)
 PDF_PATH = "醫療輔具申請-作業程序.pdf" 
 
-# --- 3. 讀取 PDF 內容 ---
+genai.configure(api_key=API_KEY)
+
+# --- 關鍵修正：在雲端請用 1.5-flash，它的免費額度最穩 ---
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# --- 2. 讀取 PDF 內容 ---
 @st.cache_resource
 def load_pdf_content(path):
     all_text = ""
@@ -24,12 +28,12 @@ def load_pdf_content(path):
                     if text: all_text += text + "\n"
             return all_text
         except Exception as e:
-            return f"讀取 PDF 發生錯誤: {e}"
+            return f"❌ 讀取 PDF 失敗：{e}"
     return None
 
 knowledge_context = load_pdf_content(PDF_PATH)
 
-# --- 4. 建立對話紀錄 ---
+# --- 3. 對話介面 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -37,28 +41,22 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 5. 處理使用者輸入 ---
 if prompt := st.chat_input("請問有什麼可以幫您的？"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        if not knowledge_context:
-            response_text = "❌ 找不到 PDF 規範檔案，請確認檔案名稱。"
-        elif "讀取 PDF 發生錯誤" in knowledge_context:
-             response_text = f"❌ 檔案已找到，但無法讀取內容。{knowledge_context}"
+        if not knowledge_context or knowledge_context.startswith("❌"):
+            response_text = "❌ 找不到 PDF 規範檔案，請確認檔案已上傳至 GitHub。"
         else:
-            full_prompt = f"請根據以下規範回答問題：\n{knowledge_context}\n\n問題：{prompt}"
+            # 這裡用你本機測試成功的 Prompt
+            full_prompt = f"你是「榮民服務處」專業助理。請嚴格根據以下規範回答：\n{knowledge_context}\n\n問題：{prompt}"
             try:
-                # 使用全新的寫法呼叫 AI 模型
-                response = client.models.generate_content(
-                    model='gemini-2.0-flash',
-                    contents=full_prompt
-                )
-                response_text = response.text
+                ai_response = model.generate_content(full_prompt)
+                response_text = ai_response.text
             except Exception as e:
-                response_text = f"出錯了：{e}"
+                response_text = f"❌ AI 連線出錯：{e}"
         
         st.markdown(response_text)
         st.session_state.messages.append({"role": "assistant", "content": response_text})
