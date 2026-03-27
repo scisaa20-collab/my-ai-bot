@@ -3,60 +3,35 @@ import google.generativeai as genai
 from openai import OpenAI
 import pdfplumber
 import os
-import streamlit.components.v1 as components
 
 # --- 1. 網頁基礎設定 ---
-st.set_page_config(page_title="榮民業務智慧導航", page_icon="🏛️", layout="centered")
+st.set_page_config(page_title="榮民業務智慧導航", page_icon="🏛️")
 
-# --- 2. JavaScript 暴力清除器 (針對紅皇冠與綠圈圈) ---
-# 這段腳本會強制掃描並刪除 Streamlit 的官方元件
-components.html(
-    """
-    <script>
-    const removeElements = () => {
-        // 鎖定所有可能的官方標籤與按鈕
-        const selectors = [
-            'div[data-testid="stAppToolbar"]', 
-            'div[data-testid="stDecoration"]',
-            'div[data-testid="stStatusWidget"]',
-            'header',
-            'footer',
-            '.stAppDeployButton',
-            'button[title="Manage app"]',
-            'button[title="View menu"]'
-        ];
-        
-        selectors.forEach(selector => {
-            const elements = window.parent.document.querySelectorAll(selector);
-            elements.forEach(el => el.style.display = 'none');
-        });
-    };
-
-    // 每 500 毫秒執行一次，確保按鈕跳出來後立刻被刪除
-    setInterval(removeElements, 500);
-    </script>
-    """,
-    height=0,
-)
-
-# 補強用的 CSS (防止畫面閃爍)
+# --- 2. 終極 CSS (針對 2026 版本) ---
 st.markdown(
     """
     <style>
-    div[data-testid="stAppToolbar"], .stDeployButton, footer, header {display: none !important;}
+    /* 強制隱藏所有可能抓到的工具列元素 */
+    header, footer {visibility: hidden !important; display: none !important;}
+    .stAppDeployButton {display: none !important;}
+    div[data-testid="stAppToolbar"] {display: none !important;}
+    div[data-testid="stDecoration"] {display: none !important;}
+    #MainMenu {visibility: hidden !important;}
+    
+    /* 針對手機版做最後的底部空白修復 */
+    .main .block-container {padding-bottom: 0rem !important;}
     </style>
-    """, 
+    """,
     unsafe_allow_html=True
 )
 
-# --- 3. 網頁標題與顯示 ---
 st.title("🏛️ 榮民服務智慧諮詢助理")
-st.info("💡 您好！我是小助。目前預設使用 **Gemma 3** 為您服務。")
+st.info("💡 歡迎使用！我是助理小助，目前使用 **Gemma 3** 為您服務。")
 
-# --- 4. 側邊欄：模型設定 ---
+# --- 3. 側邊欄 ---
 with st.sidebar:
     st.header("⚙️ 系統設定")
-    choice = st.selectbox("請選擇 AI 大腦：", ["Gemma 3", "Gemini 3 Flash", "xAI Grok"])
+    choice = st.selectbox("選擇大腦：", ["Gemma 3", "Gemini 3 Flash", "xAI Grok"])
     
     engine, m_id, grok_client = "", "", None
     if choice == "Gemma 3":
@@ -72,7 +47,7 @@ with st.sidebar:
         except: m_id = "grok-2"
     st.success(f"目前運行：{m_id}")
 
-# --- 5. 讀取 PDF ---
+# --- 4. 讀取 PDF ---
 PDF_PATH = "醫療輔具申請-作業程序.pdf"
 @st.cache_resource
 def get_pdf_text():
@@ -84,18 +59,20 @@ def get_pdf_text():
     return ""
 context = get_pdf_text()
 
-# --- 6. 對話功能 ---
+# --- 5. 對話紀錄 ---
 if "chat" not in st.session_state: st.session_state.chat = []
 for m in st.session_state.chat:
     with st.chat_message(m["role"]): st.markdown(m["content"])
 
+# --- 6. 發送提問 ---
 if prompt := st.chat_input("您想了解哪項業務申請呢？"):
     st.session_state.chat.append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        system_instruction = "你現在是榮服處專業助理「小助」，請溫馨、分點回答規範內容。若沒提到請委婉告知並引導撥電話。"
-        full_p = f"{system_instruction}\n\n【規範】\n{context}\n\n【問題】\n{prompt}"
+        # Persona 設定
+        sys = "你現在是榮服處助理小助，請溫馨、分點回答規範內容。若沒提到請委婉告知並引導撥電話。"
+        full_p = f"{sys}\n\n【規範】\n{context}\n\n【問題】\n{prompt}"
         try:
             with st.spinner("小助正在翻閱規範..."):
                 if engine == "GEMINI":
