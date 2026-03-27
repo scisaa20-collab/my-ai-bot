@@ -7,41 +7,40 @@ import os
 # --- 1. 網頁基礎設定 ---
 st.set_page_config(page_title="榮民業務智慧導航", page_icon="🏛️")
 
-# --- 2. 視覺美化：隱藏右下角皇冠與上方雜物 ---
+# --- 2. 終極視覺美化：強力隱藏所有官方標籤與工具列 ---
+# 這裡使用了最嚴格的 CSS 選擇器，試圖從底層抹除皇冠與連線圖示
 hide_st_style = """
             <style>
-            /* 1. 隱藏上方標題列與選單 (包括電腦版) */
-            header {visibility: hidden; display: none !important;}
+            /* 隱藏上方裝飾線 */
+            div[data-testid="stDecoration"] {display: none !important;}
+            
+            /* 隱藏選單按鈕與部署按鈕 */
             #MainMenu {visibility: hidden; display: none !important;}
-            
-            /* 2. 隱藏底部所有標籤 ("Made with Streamlit" 等) */
-            footer {visibility: hidden; display: none !important;}
-            div[data-testid="stFooter"] {display: none !important;}
-            #streamlit_status_details {display: none !important;}
-            
-            /* 3. 終極打擊：移除手機版右下角的紅色皇冠與 Deploy 選單圖示 */
-            /* 針對最新的 Deploy 按鈕樣式 */
             .stDeployButton {display: none !important;}
-            div[data-testid="stDeployButton"] {display: none !important;}
+            header {visibility: hidden; display: none !important;}
             
-            /* 針對手機版特有的浮動選單圖示 */
-            button[title="View menu"] {display: none !important;}
-            button[aria-label="View menu"] {display: none !important;}
+            /* 隱藏底部 "Made with Streamlit" */
+            footer {display: none !important;}
+            div[data-testid="stFooter"] {display: none !important;}
+            
+            /* 【核心修正】強力隱藏手機版右下角的工具列 (紅皇冠與綠圈圈所在處) */
             div[data-testid="stAppToolbar"] {display: none !important;}
+            button[title="View menu"] {display: none !important;}
             
-            /* 針對特定版本混淆類名的最後保底 (選擇性使用) */
-            /* .st-emotion-cache-1wbqy5l, .st-emotion-cache-1vt458u, .st-emotion-cache-5rimss {display: none !important;} */
+            /* 針對手機版可能殘留的透明區塊進行最後清除 */
+            .st-emotion-cache-1wbqy5l {display: none !important;}
+            .st-emotion-cache-1vt458u {display: none !important;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
 st.title("🏛️ 榮民服務智慧諮詢助理")
-st.info("💡 您好！我是您的業務小助手「小助」，目前預設使用 Gemma 3 為您服務。")
+st.info("💡 您好！我是小助。目前預設使用 **Gemma 3** 為您服務，這是一個既聰明又穩定的選擇。")
 
 # --- 3. 側邊欄：模型設定與自動偵測 ---
 with st.sidebar:
     st.header("⚙️ 系統設定")
-    # 將 Gemma 3 移到清單第一個，作為預設選項
+    # 預設首選為 Gemma 3
     choice = st.selectbox(
         "請選擇 AI 大腦：",
         ["Gemma 3", "Gemini 3 Flash", "xAI Grok"]
@@ -103,21 +102,21 @@ if prompt := st.chat_input("您想了解哪項業務申請呢？"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        # 溫暖專業的 Persona 設定
         system_instruction = """
         你現在是「桃園市榮民服務處」的專業 AI 助理，名字叫「小助」。
         請根據提供的規範內容，用溫暖、耐心且清晰的方式回答。
 
         回覆原則：
-        1. 語氣親切：稱呼對方為「您」，多用些溫馨禮貌的詞語。
-        2. 排版分點：使用「1. 2. 3.」或「-」符號。
-        3. 誠實告知：若規範沒提到，請委婉說「目前規範未記載，建議撥打榮服處電話詢問」。
-        4. 禁止胡扯：絕對不編造規範外的資訊。
+        1. 語氣親切：稱呼對方為「您」，展現關懷。
+        2. 排版分點：條理分明，讓民眾一眼看懂步驟。
+        3. 誠實告知：規範未提到時，委婉引導聯繫榮服處，不亂編造。
         """
         
         full_p = f"{system_instruction}\n\n【參考規範內容】\n{context}\n\n【民眾問題】\n{prompt}"
         
         try:
-            with st.spinner("小助正在為您翻閱手冊..."):
+            with st.spinner("小助正在翻閱規範，請稍候..."):
                 if engine == "GEMINI":
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     model = genai.GenerativeModel(m_id)
