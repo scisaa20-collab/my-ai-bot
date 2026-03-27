@@ -10,10 +10,27 @@ st.set_page_config(page_title="榮民業務智慧導航", page_icon="🏛️")
 # --- 2. 視覺美化：隱藏右下角皇冠與上方雜物 ---
 hide_st_style = """
             <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            .stDeployButton {display:none;}
+            /* 1. 隱藏上方標題列與選單 (包括電腦版) */
+            header {visibility: hidden; display: none !important;}
+            #MainMenu {visibility: hidden; display: none !important;}
+            
+            /* 2. 隱藏底部所有標籤 ("Made with Streamlit" 等) */
+            footer {visibility: hidden; display: none !important;}
+            div[data-testid="stFooter"] {display: none !important;}
+            #streamlit_status_details {display: none !important;}
+            
+            /* 3. 終極打擊：移除手機版右下角的紅色皇冠與 Deploy 選單圖示 */
+            /* 針對最新的 Deploy 按鈕樣式 */
+            .stDeployButton {display: none !important;}
+            div[data-testid="stDeployButton"] {display: none !important;}
+            
+            /* 針對手機版特有的浮動選單圖示 */
+            button[title="View menu"] {display: none !important;}
+            button[aria-label="View menu"] {display: none !important;}
+            div[data-testid="stAppToolbar"] {display: none !important;}
+            
+            /* 針對特定版本混淆類名的最後保底 (選擇性使用) */
+            /* .st-emotion-cache-1wbqy5l, .st-emotion-cache-1vt458u, .st-emotion-cache-5rimss {display: none !important;} */
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
