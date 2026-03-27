@@ -14,7 +14,7 @@ API_KEY = st.secrets["GEMINI_API_KEY"] # 記得換成你的 KEY
 PDF_PATH = "醫療輔具申請-作業程序.pdf" 
 
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 3. 讀取 PDF 內容 (使用緩存避免重複讀取) ---
 @st.cache_resource
