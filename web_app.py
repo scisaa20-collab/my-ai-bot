@@ -3,77 +3,76 @@ import google.generativeai as genai
 from openai import OpenAI
 import pdfplumber
 import os
+import streamlit.components.v1 as components
 
 # --- 1. 網頁基礎設定 ---
-st.set_page_config(page_title="榮民業務智慧導航", page_icon="🏛️")
+st.set_page_config(page_title="榮民業務智慧導航", page_icon="🏛️", layout="centered")
 
-# --- 2. 終極視覺美化：強力隱藏所有官方標籤與工具列 ---
-# 這裡使用了最嚴格的 CSS 選擇器，試圖從底層抹除皇冠與連線圖示
-hide_st_style = """
-            <style>
-            /* 隱藏上方裝飾線 */
-            div[data-testid="stDecoration"] {display: none !important;}
-            
-            /* 隱藏選單按鈕與部署按鈕 */
-            #MainMenu {visibility: hidden; display: none !important;}
-            .stDeployButton {display: none !important;}
-            header {visibility: hidden; display: none !important;}
-            
-            /* 隱藏底部 "Made with Streamlit" */
-            footer {display: none !important;}
-            div[data-testid="stFooter"] {display: none !important;}
-            
-            /* 【核心修正】強力隱藏手機版右下角的工具列 (紅皇冠與綠圈圈所在處) */
-            div[data-testid="stAppToolbar"] {display: none !important;}
-            button[title="View menu"] {display: none !important;}
-            
-            /* 針對手機版可能殘留的透明區塊進行最後清除 */
-            .st-emotion-cache-1wbqy5l {display: none !important;}
-            .st-emotion-cache-1vt458u {display: none !important;}
-            </style>
-            """
-st.markdown(hide_st_style, unsafe_allow_html=True)
+# --- 2. JavaScript 暴力清除器 (針對紅皇冠與綠圈圈) ---
+# 這段腳本會強制掃描並刪除 Streamlit 的官方元件
+components.html(
+    """
+    <script>
+    const removeElements = () => {
+        // 鎖定所有可能的官方標籤與按鈕
+        const selectors = [
+            'div[data-testid="stAppToolbar"]', 
+            'div[data-testid="stDecoration"]',
+            'div[data-testid="stStatusWidget"]',
+            'header',
+            'footer',
+            '.stAppDeployButton',
+            'button[title="Manage app"]',
+            'button[title="View menu"]'
+        ];
+        
+        selectors.forEach(selector => {
+            const elements = window.parent.document.querySelectorAll(selector);
+            elements.forEach(el => el.style.display = 'none');
+        });
+    };
 
+    // 每 500 毫秒執行一次，確保按鈕跳出來後立刻被刪除
+    setInterval(removeElements, 500);
+    </script>
+    """,
+    height=0,
+)
+
+# 補強用的 CSS (防止畫面閃爍)
+st.markdown(
+    """
+    <style>
+    div[data-testid="stAppToolbar"], .stDeployButton, footer, header {display: none !important;}
+    </style>
+    """, 
+    unsafe_allow_html=True
+)
+
+# --- 3. 網頁標題與顯示 ---
 st.title("🏛️ 榮民服務智慧諮詢助理")
-st.info("💡 您好！我是小助。目前預設使用 **Gemma 3** 為您服務，這是一個既聰明又穩定的選擇。")
+st.info("💡 您好！我是小助。目前預設使用 **Gemma 3** 為您服務。")
 
-# --- 3. 側邊欄：模型設定與自動偵測 ---
+# --- 4. 側邊欄：模型設定 ---
 with st.sidebar:
     st.header("⚙️ 系統設定")
-    # 預設首選為 Gemma 3
-    choice = st.selectbox(
-        "請選擇 AI 大腦：",
-        ["Gemma 3", "Gemini 3 Flash", "xAI Grok"]
-    )
+    choice = st.selectbox("請選擇 AI 大腦：", ["Gemma 3", "Gemini 3 Flash", "xAI Grok"])
     
-    engine = ""
-    m_id = ""
-    grok_client = None
-
+    engine, m_id, grok_client = "", "", None
     if choice == "Gemma 3":
         engine, m_id = "GEMINI", "gemma-3-27b-it" 
     elif choice == "Gemini 3 Flash":
         engine, m_id = "GEMINI", "gemini-3-flash-preview"
     else:
-        # xAI Grok 自動偵測邏輯
         engine = "GROK"
         try:
-            grok_client = OpenAI(
-                api_key=st.secrets["XAI_API_KEY"],
-                base_url="https://api.x.ai/v1"
-            )
+            grok_client = OpenAI(api_key=st.secrets["XAI_API_KEY"], base_url="https://api.x.ai/v1")
             models_data = grok_client.models.list().data
-            live_grok_models = [m.id for m in models_data]
-            if live_grok_models:
-                m_id = st.selectbox("👉 請選擇 Grok 版本：", live_grok_models)
-            else:
-                m_id = "grok-2"
-        except:
-            m_id = "grok-2"
-    
+            m_id = st.selectbox("👉 請選擇 Grok 版本：", [m.id for m in models_data]) if models_data else "grok-2"
+        except: m_id = "grok-2"
     st.success(f"目前運行：{m_id}")
 
-# --- 4. 讀取 PDF 文字 ---
+# --- 5. 讀取 PDF ---
 PDF_PATH = "醫療輔具申請-作業程序.pdf"
 @st.cache_resource
 def get_pdf_text():
@@ -81,54 +80,29 @@ def get_pdf_text():
         try:
             with pdfplumber.open(PDF_PATH) as pdf:
                 return "\n".join([p.extract_text() for p in pdf.pages if p.extract_text()])
-        except Exception as e:
-            return f"讀取錯誤：{e}"
+        except: return ""
     return ""
-
 context = get_pdf_text()
 
-# --- 5. 對話紀錄顯示 ---
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
+# --- 6. 對話功能 ---
+if "chat" not in st.session_state: st.session_state.chat = []
 for m in st.session_state.chat:
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
+    with st.chat_message(m["role"]): st.markdown(m["content"])
 
-# --- 6. 發送提問與 AI 回覆 ---
 if prompt := st.chat_input("您想了解哪項業務申請呢？"):
     st.session_state.chat.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    with st.chat_message("user"): st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # 溫暖專業的 Persona 設定
-        system_instruction = """
-        你現在是「桃園市榮民服務處」的專業 AI 助理，名字叫「小助」。
-        請根據提供的規範內容，用溫暖、耐心且清晰的方式回答。
-
-        回覆原則：
-        1. 語氣親切：稱呼對方為「您」，展現關懷。
-        2. 排版分點：條理分明，讓民眾一眼看懂步驟。
-        3. 誠實告知：規範未提到時，委婉引導聯繫榮服處，不亂編造。
-        """
-        
-        full_p = f"{system_instruction}\n\n【參考規範內容】\n{context}\n\n【民眾問題】\n{prompt}"
-        
+        system_instruction = "你現在是榮服處專業助理「小助」，請溫馨、分點回答規範內容。若沒提到請委婉告知並引導撥電話。"
+        full_p = f"{system_instruction}\n\n【規範】\n{context}\n\n【問題】\n{prompt}"
         try:
-            with st.spinner("小助正在翻閱規範，請稍候..."):
+            with st.spinner("小助正在翻閱規範..."):
                 if engine == "GEMINI":
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model = genai.GenerativeModel(m_id)
-                    res = model.generate_content(full_p)
-                    ans = res.text
+                    ans = genai.GenerativeModel(m_id).generate_content(full_p).text
                 else:
-                    res = grok_client.chat.completions.create(
-                        model=m_id, 
-                        messages=[{"role": "user", "content": full_p}]
-                    )
-                    ans = res.choices[0].message.content
-
+                    ans = grok_client.chat.completions.create(model=m_id, messages=[{"role": "user", "content": full_p}]).choices[0].message.content
             st.markdown(ans)
             st.session_state.chat.append({"role": "assistant", "content": ans})
         except Exception as e:
