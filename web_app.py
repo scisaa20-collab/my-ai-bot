@@ -9,10 +9,10 @@ st.set_page_config(page_title="醫療輔具 AI 平台", page_icon="⚖️")
 st.title("⚖️ 醫療輔具諮詢平台")
 st.info("💡 系統已連線：桃園市榮民服務處作業程序")
 
-# --- 2. 側邊欄：乾淨的下拉選單 ---
+# --- 2. 側邊欄：純下拉選單，無版本介紹 ---
 with st.sidebar:
     st.header("⚙️ 選擇 AI 大腦")
-    # 改為 selectbox (下拉選單)，並拿掉版本介紹
+    # 使用 selectbox 建立下拉選單
     choice = st.selectbox(
         "請選擇模型：",
         ["Gemini 3 Flash", "Gemma 3", "xAI Grok"]
@@ -23,7 +23,7 @@ with st.sidebar:
     elif choice == "Gemma 3":
         engine, m_id = "GEMINI", "gemma-3-27b-it" 
     else:
-        engine, m_id = "GROK", "grok-beta"
+        engine, m_id = "GROK", "grok-2-1212" # 修正 grok-beta 為穩定 ID
         grok_client = OpenAI(
             api_key=st.secrets["XAI_API_KEY"],
             base_url="https://api.x.ai/v1"
@@ -62,6 +62,7 @@ if prompt := st.chat_input("請輸入問題..."):
                 res = genai.GenerativeModel(m_id).generate_content(full_p)
                 ans = res.text
             else:
+                # Grok 連線
                 res = grok_client.chat.completions.create(
                     model=m_id, 
                     messages=[{"role": "user", "content": full_p}]
