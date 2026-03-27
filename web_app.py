@@ -8,26 +8,36 @@ import os
 st.set_page_config(page_title="醫療輔具 AI 平台", page_icon="⚖️")
 st.title("⚖️ 醫療輔具諮詢 (穩定三核心)")
 
-# --- 2. 側邊欄：鎖定 3 類真正有額度的模型 ---
+# --- 2. 側邊欄：動態抓取正確型號 ---
 with st.sidebar:
     st.header("⚙️ 選擇 AI 大腦")
     choice = st.radio(
         "請選擇模型：",
-        ["Gemini 3.1 Flash (剩餘約 500次)", "Gemma 3 (剩餘約 1.4萬次)", "xAI Grok (付費穩定版)"]
+        ["Gemini 3.1 Flash (約 500次)", "Gemma 3 (約 1.4萬次)", "xAI Grok (自動抓取最新版)"]
     )
+    
+    engine = ""
+    m_id = ""
     
     if "Gemini 3.1" in choice:
         engine, m_id = "GEMINI", "gemini-3.1-flash-lite"
     elif "Gemma 3" in choice:
         engine, m_id = "GEMINI", "gemma-3-27b-it" 
     else:
-        # 修正後的 Grok 官方網址與穩定型號
-        engine, m_id = "GROK", "grok-beta" 
+        engine = "GROK"
         grok_client = OpenAI(
             api_key=st.secrets["XAI_API_KEY"],
-            base_url="https://api.x.ai/v1" # <--- 修正官方網址！
+            base_url="https://api.x.ai/v1"
         )
-    st.success(f"目前鎖定：{m_id}")
+        try:
+            # 終極殺手鐧：直接連線 xAI 伺服器，抓取目前活著的模型清單
+            valid_models = [m.id for m in grok_client.models.list().data if "grok" in m.id]
+            # 自動選用清單上的第一個可用模型
+            m_id = valid_models[0] if valid_models else "grok-2-1212"
+        except Exception as e:
+            m_id = "連線取得清單失敗，請稍後再試"
+
+    st.success(f"目前連線：{m_id}")
 
 # --- 3. 讀取 PDF 文字 ---
 PDF_PATH = "醫療輔具申請-作業程序.pdf"
