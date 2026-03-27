@@ -1,66 +1,62 @@
 import streamlit as st
 import google.generativeai as genai
+from openai import OpenAI
 import pdfplumber
 import os
 
 # --- 1. 網頁基本設定 ---
-st.set_page_config(page_title="醫療輔具 AI 助理", page_icon="🤖")
-st.title("🤖 醫療輔具申請諮詢助手")
-st.info("💡 系統已連線：根據桃園市榮服處規範提供諮詢")
+st.set_page_config(page_title="醫療輔具雙引擎助理", page_icon="🤖")
+st.title("🤖 醫療輔具 AI 諮詢平台")
+st.info("💡 系統已連線：桃園市榮民服務處《醫療輔具申請作業程序》")
 
-# 讀取金鑰
-API_KEY = st.secrets["GEMINI_API_KEY"]
-genai.configure(api_key=API_KEY)
-PDF_PATH = "醫療輔具申請-作業程序.pdf" 
-
-# --- 2. 核心修正：自動偵測「有額度且存在」的 3.1 模型 ---
-@st.cache_resource
-def get_best_model():
-    try:
-        # 抓取所有這把 Key 認得的模型
-        all_models = [m.name for m in genai.list_models()]
-        # 根據你的額度表，優先找 3.1-flash-lite 的各種變體名稱
-        for m_name in all_models:
-            if "3.1-flash-lite" in m_name:
-                return m_name.replace("models/", "")
-        # 如果找不到 3.1，找 2.5 做保底
-        for m_name in all_models:
-            if "2.5-flash" in m_name:
-                return m_name.replace("models/", "")
-        return "gemini-2.5-flash" # 最後的最後才用這個
-    except:
-        return "gemini-2.5-flash"
-
-TARGET_MODEL = get_best_model()
-st.caption(f"🔧 系統目前自動配對最穩定模型：{TARGET_MODEL}")
-model = genai.GenerativeModel(TARGET_MODEL)
+# --- 2. 側邊欄設定 (雙引擎與自動診斷) ---
+with st.sidebar:
+    st.header("⚙️ AI 引擎切換")
+    engine = st.radio("當前使用大腦：", ["Google Gemini", "xAI Grok"])
+    
+    if engine == "Google Gemini":
+        try:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            # 【方案一】自動偵測清單，避免 404
+            all_models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            # 優先找 3.1 或 1.5 系列
+            gemini_models = [m for m in all_models if "gemini" in m]
+            selected_model = st.selectbox("Gemini 型號選擇：", gemini_models)
+            st.success("✅ Gemini 已就緒")
+        except Exception as e:
+            st.error(f"Gemini 初始化失敗：{e}")
+    else:
+        # Grok 設定 (方案二)
+        selected_model = "grok-beta" 
+        grok_client = OpenAI(
+            api_key=st.secrets["XAI_API_KEY"],
+            base_url="https://api.xai.com/v1",
+        )
+        st.success("✅ Grok 引擎已啟動")
 
 # --- 3. 讀取 PDF 內容 ---
+PDF_PATH = "醫療輔具申請-作業程序.pdf"
 @st.cache_resource
 def load_pdf_content():
     if os.path.exists(PDF_PATH):
         try:
             with pdfplumber.open(PDF_PATH) as pdf:
-                text = ""
-                for page in pdf.pages:
-                    text += (page.extract_text() or "") + "\n"
-            return text
+                return "\n".join([(p.extract_text() or "") for p in pdf.pages])
         except: return None
     return None
 
 knowledge_context = load_pdf_content()
 
-# --- 4. 對話介面 ---
+# --- 4. 對話紀錄 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 顯示歷史紀錄
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 處理提問
-if prompt := st.chat_input("請問想了解哪種輔具的申請規則？"):
+# --- 5. 處理提問 ---
+if prompt := st.chat_input("請輸入輔具申請相關問題..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -69,23 +65,25 @@ if prompt := st.chat_input("請問想了解哪種輔具的申請規則？"):
         if not knowledge_context:
             st.error("❌ 找不到 PDF 規範檔案，請確認檔案已上傳。")
         else:
-            # 這是你原本最專業的 Prompt
-            full_prompt = f"""
-            你是「榮民服務處」的專業 AI 客服助理。請嚴格根據下方的【作業規範內容】回答問題。
-            
-            【規則】：
-            1. 如果規範中有提到答案，請詳細列出重點（如：年限、申請條件）。
-            2. 如果規範中「完全沒有」提到，請回答：「很抱歉，手冊中未記載此資訊，建議洽詢專員。」
-            
-            【作業規範內容】：
-            {knowledge_context}
-            
-            【客人的問題】：{prompt}
-            """
+            full_prompt = f"請根據以下規範精準回答問題，若未提到請告知：\n\n{knowledge_context}\n\n問題：{prompt}"
             try:
-                ai_response = model.generate_content(full_prompt)
-                st.markdown(ai_response.text)
-                st.session_state.messages.append({"role": "assistant", "content": ai_response.text})
+                if engine == "Google Gemini":
+                    model = genai.GenerativeModel(selected_model)
+                    response = model.generate_content(full_prompt)
+                    answer = response.text
+                else:
+                    # 使用 Grok 引擎
+                    response = grok_client.chat.completions.create(
+                        model=selected_model,
+                        messages=[{"role": "user", "content": full_prompt}]
+                    )
+                    answer = response.choices[0].message.content
+                
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                
             except Exception as e:
-                # 如果 500 次也爆了，我們就看錯誤訊息
-                st.error(f"❌ AI 暫時無法回應：{e}")
+                st.error(f"❌ {engine} 連線異常")
+                st.code(f"錯誤詳情：{e}")
+                if "429" in str(e):
+                    st.warning("💡 這個大腦今天累了（額度滿了），請從左側切換到另一個大腦試試！")
