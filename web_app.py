@@ -6,38 +6,42 @@ import os
 
 # --- 1. 網頁基礎設定 ---
 st.set_page_config(page_title="醫療輔具 AI 平台", page_icon="⚖️")
-st.title("⚖️ 醫療輔具諮詢 (穩定三核心)")
+st.title("⚖️ 醫療輔具諮詢 (雙擎最終版)")
 
-# --- 2. 側邊欄：動態抓取正確型號 ---
+# --- 2. 側邊欄：動態抓取真實型號 ---
 with st.sidebar:
     st.header("⚙️ 選擇 AI 大腦")
-    choice = st.radio(
-        "請選擇模型：",
-        ["Gemini 3.1 Flash (約 500次)", "Gemma 3 (約 1.4萬次)", "xAI Grok (自動抓取最新版)"]
-    )
+    engine_choice = st.radio("請選擇平台：", ["xAI Grok (穩定版)", "Google Gemini (動態掃描)"])
     
     engine = ""
     m_id = ""
     
-    if "Gemini 3.1" in choice:
-        engine, m_id = "GEMINI", "gemini-3.1-flash-lite"
-    elif "Gemma 3" in choice:
-        engine, m_id = "GEMINI", "gemma-3-27b-it" 
-    else:
+    if engine_choice == "xAI Grok (穩定版)":
         engine = "GROK"
-        grok_client = OpenAI(
-            api_key=st.secrets["XAI_API_KEY"],
-            base_url="https://api.x.ai/v1"
-        )
+        grok_client = OpenAI(api_key=st.secrets["XAI_API_KEY"], base_url="https://api.x.ai/v1")
         try:
-            # 終極殺手鐧：直接連線 xAI 伺服器，抓取目前活著的模型清單
             valid_models = [m.id for m in grok_client.models.list().data if "grok" in m.id]
-            # 自動選用清單上的第一個可用模型
-            m_id = valid_models[0] if valid_models else "grok-2-1212"
+            m_id = valid_models[0] if valid_models else "grok-beta"
+        except:
+            m_id = "grok-beta"
+        st.success(f"目前連線：{m_id}")
+        
+    else:
+        # Gemini 真實清單掃描
+        engine = "GEMINI"
+        try:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            # 照妖鏡：直接抓取支援聊天的所有真實 ID
+            live_models = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            if live_models:
+                # 讓使用者從真正活著的名單裡挑選
+                m_id = st.selectbox("請選擇真實可用的 Gemini 型號：", live_models)
+                st.success(f"目前連線：{m_id}")
+            else:
+                st.error("❌ 這把金鑰找不到任何支援聊天的模型")
         except Exception as e:
-            m_id = "連線取得清單失敗，請稍後再試"
-
-    st.success(f"目前連線：{m_id}")
+            st.error(f"❌ 讀取 Gemini 清單失敗：{e}")
 
 # --- 3. 讀取 PDF 文字 ---
 PDF_PATH = "醫療輔具申請-作業程序.pdf"
@@ -66,11 +70,11 @@ if prompt := st.chat_input("請輸入輔具申請相關問題..."):
         full_p = f"請根據規範精準回答，未提到請告知：\n\n{context}\n\n問題：{prompt}"
         try:
             if engine == "GEMINI":
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                # 使用你從選單挑出的真實 ID
                 res = genai.GenerativeModel(m_id).generate_content(full_p)
                 ans = res.text
             else:
-                # Grok 正式連線
+                # Grok 連線
                 res = grok_client.chat.completions.create(
                     model=m_id, 
                     messages=[{"role": "user", "content": full_p}]
